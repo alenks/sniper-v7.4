@@ -15,17 +15,20 @@ class BarrierSyncServer : public ClockSkewMinimizationServer
       SubsecondTime m_barrier_interval;
       SubsecondTime m_next_barrier_time;
       std::vector<SubsecondTime> m_local_clock_list;
+      std::vector<std::vector<SubsecondTime>> m_local_clock_lists_for_deadlock_issue;
       std::vector<bool> m_barrier_acquire_list;
       std::vector<ConditionVariable*> m_core_cond;
       std::vector<core_id_t> m_to_release;
       std::vector<core_id_t> m_core_group;
       std::vector<thread_id_t> m_core_thread;
       SubsecondTime m_global_time;
+      Lock local_lock;
       bool m_fastforward;
       volatile bool m_disable;
 
-      bool isBarrierReached(void);
       bool barrierRelease(thread_id_t thread_id = INVALID_THREAD_ID, bool continue_until_release = false);
+      //bool barrierTimeoutRelease(thread_id_t thread_id = INVALID_THREAD_ID, bool continue_until_release = false);
+      bool barrierTimeoutRelease(SubsecondTime current_time , thread_id_t caller_id, bool continue_until_release=false);
       void abortBarrier(void);
       bool isCoreRunning(core_id_t core_id, bool siblings = true);
       void releaseThread(thread_id_t thread_id);
@@ -49,16 +52,21 @@ class BarrierSyncServer : public ClockSkewMinimizationServer
       BarrierSyncServer();
       ~BarrierSyncServer();
 
+      bool isBarrierReached(void);
       virtual void setDisable(bool disable);
       virtual void setGroup(core_id_t core_id, core_id_t master_core_id);
       void synchronize(core_id_t core_id, SubsecondTime time);
       void release() { abortBarrier(); }
       void advance();
       void setFastForward(bool fastforward, SubsecondTime next_barrier_time = SubsecondTime::MaxTime());
+      bool isFastForward() {
+        return m_fastforward;
+      }
       SubsecondTime getGlobalTime(bool upper_bound = false) { return upper_bound ? m_next_barrier_time : m_global_time; }
       void setBarrierInterval(SubsecondTime barrier_interval) { m_barrier_interval = barrier_interval; }
       SubsecondTime getBarrierInterval() const { return m_barrier_interval; }
 
+      bool onlyMainCoreRunning(void) ;
       void printState(void);
 };
 

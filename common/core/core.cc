@@ -139,8 +139,9 @@ Core::countInstructions(IntPtr address, UInt32 count)
    bool check_rescheduled = false;
 
    m_instructions += count;
-   if (m_bbv.sample())
+   if (m_bbv.sample()) {
       m_bbv.count(address, count);
+   }
    m_performance_model->countInstructions(address, count);
 
    if (isEnabledInstructionsCallback())

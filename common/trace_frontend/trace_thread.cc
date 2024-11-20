@@ -17,7 +17,7 @@
 #include "rng.h"
 #include "routine_tracer.h"
 #include "sim_api.h"
-
+#include "log2.h"
 #include "stats.h"
 
 #include <unistd.h>
@@ -797,7 +797,9 @@ void TraceThread::run()
       if (m_bbv_end || m_bbv_last != inst.sinst->addr)
       {
          // We're the start of a new basic block
+//         LOG2(INFO) << "I am called";
          core->countInstructions(m_bbv_base, m_bbv_count);
+//         LOG2(FATAL) << "I am wrong";
          // In cache-only mode, we'll want to do I-cache warmup
          if (m_bbv_base)
          {

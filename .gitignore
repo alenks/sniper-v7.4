@@ -23,6 +23,7 @@ sim.stats.base
 sim.stats.delta
 sim.stats.db
 sim.stats.sqlite3
+sim.scripts.py
 appdebug_port.out
 debug_offset.out
 graphite.out
@@ -70,3 +71,7 @@ frontend/pin-frontend/sift/*.h
 frontend/pin-frontend/sift/*.cc
 sift/recorder/sift/*.h
 sift/recorder/sift/*.cc
+
+#Symlinked Hooks files
+sift/recorder/common/system/hooks*.h
+sift/recorder/common/system/hooks*.cc

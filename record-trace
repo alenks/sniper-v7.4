@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 import sys, os, getopt, subprocess, tarfile
 sys.path.append(os.path.join(os.path.dirname(__file__), 'tools'))
@@ -10,7 +10,7 @@ HOME = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0])))
 def usage():
   print 'Collect SIFT instruction trace'
   print 'Usage:'
-  print '  %s  -o <output file (default=trace)> [--roi] [-f <fast-forward instrs (default=none)] [-d <detailed instrs (default=all)] [-b <block size (instructions, default=all)> [-e <syscall emulation> (default=0)] [-r <use response files (default=0)>] [--gdb|--gdb-wait|--gdb-quit] [--follow] [--routine-tracing] [--outputdir <outputdir (.)>] [--stop-address <insn end address>] [--frontend=<frontend>] [--frontend-option=<options>] [--maxthreads] { --pinball=<pinball-basename> | --pid <pid> | -- <cmdline> }' % sys.argv[0]
+  print '  %s  -o <output file (default=trace)> [--roi] [-f <fast-forward instrs (default=none)] [-d <detailed instrs (default=all)] [-b <block size (instructions, default=all)> [-e <syscall emulation> (default=0)] [-r <use response files (default=0)>] [--gdb|--gdb-wait|--gdb-quit] [--follow] [--routine-tracing] [--outputdir <outputdir (.)>] [--stop-address <insn end address>] [--frontend=<frontend>] [--frontend-option=<options>] [--maxthreads] [--mtng [--cluster-type=bbv/ldv/sv]] [--mtng-dir=<datadir>]{ --pinball=<pinball-basename> | --pid <pid> | -- <cmdline> }' % sys.argv[0]
   sys.exit(2)
 
 # From http://stackoverflow.com/questions/6767649/how-to-get-process-status-using-pid
@@ -52,12 +52,26 @@ use_pid = None
 pid_continue = False
 stop_address = 0
 maxthreads = None
-
+smarts_ffw_num=10
+# bbv options
+mtng = 0
+mtng_dir = '.'
+dvfs_dir = '.'
+mtng_cluster_type = 'bbv'
+atomic_type = 0
+dvfs_enable = 0
+mtr_enable = 0
+flowcontrol_level = 0
+flowcontrol_fastforward = 0
+record_full_mode = 0
+cluster_threshold=0.05
+region_size=50000
+minimum_region_size=20000
 if not sys.argv[1:]:
   usage()
 
 try:
-  opts, cmdline = getopt.getopt(sys.argv[1:], "hvo:d:f:b:e:s:r:X:x:", [ "roi", "roi-mpi", "gdb", "gdb-wait", "gdb-quit", "gdb-screen", "follow", "pa", "routine-tracing", "pinball=", "outputdir=", "pinplay-addr-trans", "pid=", "stop-address=", "pid-continue", "frontend=", "frontend-option=", "maxthreads=" ])
+    opts, cmdline = getopt.getopt(sys.argv[1:], "hvo:d:f:b:e:s:r:X:x:", [ "roi", "roi-mpi", "gdb", "gdb-wait", "gdb-quit", "gdb-screen", "follow", "pa", "routine-tracing", "pinball=", "outputdir=", "pinplay-addr-trans", "pid=", "stop-address=", "pid-continue", "frontend=", "frontend-option=", "maxthreads=", 'mtng=', "mtnghybrid",'cluster-type=', 'mtng-dir=','atomic-type=','dvfs','dvfs-dir=',"record-full-mode","mtr",'flowcontrol=','emu','cluster-threshold=','region-size=','minimum-region-size=','smarts-ffw-num=','micro-arch='])
 except getopt.GetoptError, e:
   # print help information and exit:
   print e
@@ -71,10 +85,14 @@ for o, a in opts:
   if o == '-o':
     outputfile = a
   if o == '--roi':
-    use_roi = True
+    use_roi = True 
   if o == '--roi-mpi':
     roi_mpi = True
+  if o == '--micro-arch':
+    micro_architecture = a
+    print(a)
   if o == '-f':
+#    fastforward=10000000000
     fastforward = long(float(a))
   if o == '-d':
     detailed = long(float(a))
@@ -128,6 +146,49 @@ for o, a in opts:
     pid_continue = True
   if o == '--maxthreads':
     extra_tool_args.append('-maxthreads %s' % a)
+  if o == '--smarts-ffw-num':
+    smarts_ffw_num = int(a)
+
+  if o == '--mtng':
+    mtng = int(a)
+#  if o == '--mtnghybrid':
+#    mtng = 2
+  if o == '--cluster-threshold':
+    cluster_threshold = float(a)
+  if o == '--region-size':
+    region_size = int(a)
+  if o == '--minimum-region-size':
+    minimum_region_size = int(a)
+  if o == '--emu':
+    fastforward = (2**64) - 1
+  if o == '--cluster-type':
+    mtng_cluster_type = a
+  if o == '--mtng-dir':
+    mtng_dir = a 
+    print "[MTNG] mtng_dir set to: ", a
+  if o == '--atomic-type':
+    atomic_type = int(a)
+  if o == '--dvfs':
+    dvfs_enable = 1
+  if o == '--dvfs-dir':
+    dvfs_dir = a 
+    print "[DVFS] dvfs_dir set to: ", a
+  if o == '--record-full-mode':
+    record_full_mode = 1 
+    print "[DVFS] dvfs_dir set to: ", a
+  if o == '--mtr':
+    mtr_enable = 1
+  if o == '--flowcontrol':
+    a_int = int(a)
+    if a_int == 0:
+        flowcontrol_level = 0
+        flowcontrol_fastforward = 0x7fffffff
+    elif a_int == 1:
+        flowcontrol_level = 1
+        flowcontrol_fastforward = 0x7fffffff
+    else:
+        flowcontrol_level = 2
+        flowcontrol_fastforward = a_int
 
 outputdir = os.path.realpath(outputdir)
 if not os.path.exists(outputdir):
@@ -142,6 +203,7 @@ if use_pa:
   # If the Linux version is 4.0 or greater, and we don't have the CAP_SYS_ADMIN capability (bit 21), report an error
   output = subprocess.check_output("echo -n $(( $(uname -r | cut -d . -f 2) >= 4 && ((0x$(grep CapEff /proc/self/status | cut -f 2) >> 20) & 1) ))", shell=True)
   if '0' in output:
+
     print >> sys.stderr, '[SIFT_RECORDER]', 'Unable to use physical address translation with this kernel and current user capabilities, aborting.'
     sys.exit(1)
 
@@ -202,8 +264,8 @@ value_verbose = verbose and 1 or 0
 extra_tool_args = ' '.join(extra_tool_args)
 if frontend:
   if 'pin' in frontend:
-    print '[RECORD-TRACE] Using Pin frontend (frontend/pin-frontend)'
-    cmd = '%(pin_home)s/pin %(pinoptions)s -t %(HOME)s/frontend/pin-frontend/obj-%(arch)s/pin_frontend -verbose %(value_verbose)d -debug %(gdb_screen)d -roi %(value_roi)d -roi-mpi %(value_roi_mpi)d -f %(fastforward)d -d %(detailed)d -b %(blocksize)d -o %(outputfile)s -e %(syscallemulation)d -s %(siftcountoffset)d -r %(useresponsefiles)d -pa %(value_pa)d -rtntrace %(value_routine_tracing)d -stop %(stop_address)d %(pinballoptions)s %(extra_tool_args)s %(extrae)s -- ' % locals() + ' '.join(cmdline)
+      print '[RECORD-TRACE] Using Pin frontend (frontend/pin-frontend)'
+      cmd = '%(pin_home)s/pin %(pinoptions)s -t %(HOME)s/frontend/pin-frontend/obj-%(arch)s/pin_frontend -verbose %(value_verbose)d -debug %(gdb_screen)d -roi %(value_roi)d -roi-mpi %(value_roi_mpi)d -f %(fastforward)d -d %(detailed)d -b %(blocksize)d -o %(outputfile)s -e %(syscallemulation)d -s %(siftcountoffset)d -r %(useresponsefiles)d -pa %(value_pa)d -rtntrace %(value_routine_tracing)d -stop %(stop_address)d %(pinballoptions)s %(extra_tool_args)s %(extrae)s -- ' % locals() + ' '.join(cmdline)
   elif 'dr' in frontend:
     print '[RECORD-TRACE] Using DynamoRIO frontend'
     DRRUN = '%(dynamorio_home)s/bin64/drrun' % locals()
@@ -236,13 +298,20 @@ if frontend:
     if not os.path.isfile(spike_bin) or not os.path.isfile(pk_bin):
       print '[RECORD-TRACE] Error: Could not find spike/pk at [%s][%s]' % (spike_bin, pk_bin)
       sys.exit(1)
-    cmd = '%(spike_bin)s --sift %(outputfile)s.app0.th0.sift %(frontend_options_str)s %(pk_bin)s ' % locals() + ' '.join(cmdline)
+    cmd = '%(spike_bin)s --sift %(outputfile)s.app0.th0.sift %(frontend_options_str)s %(pk_bin)s ' % locals() + ' '.join(cmdline) 
   else:
     print '[RECORD-TRACE] Error: frontend %s not recognized' % frontend
     sys.exit(1)
 else:
   print '[RECORD-TRACE] Using the Pin frontend (sift/recorder)'
-  cmd = '%(pin_home)s/pin %(pinoptions)s -t %(HOME)s/sift/recorder/obj-%(arch)s/sift_recorder -verbose %(value_verbose)d -debug %(gdb_screen)d -roi %(value_roi)d -roi-mpi %(value_roi_mpi)d -f %(fastforward)d -d %(detailed)d -b %(blocksize)d -o %(outputfile)s -e %(syscallemulation)d -s %(siftcountoffset)d -r %(useresponsefiles)d -pa %(value_pa)d -rtntrace %(value_routine_tracing)d -stop %(stop_address)d %(pinballoptions)s %(extra_tool_args)s %(extrae)s -- ' % locals() + ' '.join(cmdline)
+  if mtng:
+    if not flowcontrol_level>=2:
+        cmd = '%(pin_home)s/pin %(pinoptions)s -t %(HOME)s/sift/recorder/obj-%(arch)s/sift_recorder -verbose %(value_verbose)d -debug %(gdb_screen)d -roi %(value_roi)d -roi-mpi %(value_roi_mpi)d -f %(fastforward)d -d %(detailed)d -b %(blocksize)d -o %(outputfile)s -e %(syscallemulation)d -s %(siftcountoffset)d -r %(useresponsefiles)d -pa %(value_pa)d -rtntrace %(value_routine_tracing)d -stop %(stop_address)d %(pinballoptions)s %(extra_tool_args)s %(extrae)s -mtng %(mtng)d -cluster-type %(mtng_cluster_type)s -mtng-dir %(mtng_dir)s -atomic-type %(atomic_type)d -dvfs %(dvfs_enable)d -mtr %(mtr_enable)d -flowcontrol %(flowcontrol_level)d -cluster-threshold %(cluster_threshold)f -region-size %(region_size)d -minimum-region-size %(minimum_region_size)d -smarts-ffw-num %(smarts_ffw_num)d -arch %(micro_architecture)s -- ' % locals() + ' '.join(cmdline)
+#    else:
+#        cmd = '%(pin_home)s/pin %(pinoptions)s -t %(HOME)s/sift/recorder/obj-%(arch)s/sift_recorder -verbose %(value_verbose)d -debug %(gdb_screen)d -roi %(value_roi)d -roi-mpi %(value_roi_mpi)d -f %(fastforward)d -d %(detailed)d -b %(blocksize)d -o %(outputfile)s -e %(syscallemulation)d -s %(siftcountoffset)d -r %(useresponsefiles)d -pa %(value_pa)d -rtntrace %(value_routine_tracing)d -stop %(stop_address)d %(pinballoptions)s %(extra_tool_args)s %(extrae)s -mtng %(mtng)d -cluster-type %(mtng_cluster_type)s -mtng-dir %(mtng_dir)s -atomic-type %(atomic_type)d -dvfs %(dvfs_enable)d -mtr %(mtr_enable)d -flowcontrol %(flowcontrol_level)d -flowcontrol:quantum %(flowcontrol_fastforward)d -- ' % locals() + ' '.join(cmdline)
+  else:
+    cmd = '%(pin_home)s/pin %(pinoptions)s -t %(HOME)s/sift/recorder/obj-%(arch)s/sift_recorder -verbose %(value_verbose)d -debug %(gdb_screen)d -roi %(value_roi)d -roi-mpi %(value_roi_mpi)d -f %(fastforward)d -d %(detailed)d -b %(blocksize)d -o %(outputfile)s -e %(syscallemulation)d -s %(siftcountoffset)d -r %(useresponsefiles)d -pa %(value_pa)d -rtntrace %(value_routine_tracing)d -stop %(stop_address)d %(pinballoptions)s %(extra_tool_args)s %(extrae)s -dvfs %(dvfs_enable)d -dvfs-dir %(dvfs_dir)s -record-full-mode %(record_full_mode)s -- ' % locals() + ' '.join(cmdline)
+
 
 
 if verbose:

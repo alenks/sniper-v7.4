@@ -33,7 +33,10 @@ BarrierSyncServer::BarrierSyncServer()
    {
       LOG_PRINT_ERROR("Error Reading 'clock_skew_minimization/barrier/quantum' from the config file");
    }
-
+   m_local_clock_lists_for_deadlock_issue = std::vector< std::vector<SubsecondTime> >(Sim()->getConfig()->getApplicationCores() );
+   for(core_id_t core_id = 0; core_id < (core_id_t)Sim()->getConfig()->getApplicationCores(); ++core_id) {
+        m_local_clock_lists_for_deadlock_issue[core_id] = std::vector<SubsecondTime>(Sim()->getConfig()->getApplicationCores(),SubsecondTime::Zero()); 
+   }
    for(core_id_t core_id = 0; core_id < (core_id_t)Sim()->getConfig()->getApplicationCores(); ++core_id)
       m_core_cond[core_id] = new ConditionVariable();
 
@@ -51,6 +54,21 @@ BarrierSyncServer::~BarrierSyncServer()
 {
    for(core_id_t core_id = 0; core_id < (core_id_t)Sim()->getConfig()->getApplicationCores(); ++core_id)
       delete m_core_cond[core_id];
+}
+
+std::vector<SubsecondTime> getEachCoreTimeBeforeWait() {
+
+    auto size = (core_id_t) Sim()->getConfig()->getApplicationCores();
+    std::vector<SubsecondTime> vector_time_before_waiting;
+    vector_time_before_waiting.reserve(size);
+    for (core_id_t core_id = 0; core_id < (core_id_t) Sim()->getConfig()->getApplicationCores(); core_id++) {
+
+        Core *core_tmp = Sim()->getCoreManager()->getCoreFromID(core_id);
+
+        SubsecondTime curr_elapsed_time = core_tmp->getPerformanceModel()->getElapsedTime();
+        vector_time_before_waiting.push_back(curr_elapsed_time); 
+    }
+    return vector_time_before_waiting;
 }
 
 void
@@ -75,11 +93,14 @@ BarrierSyncServer::synchronize(core_id_t core_id, SubsecondTime time)
    LOG_ASSERT_ERROR(core->getState() == Core::RUNNING || core->getState() == Core::INITIALIZING, "Core(%i) is not running or initializing at time(%s)", core_id, itostr(time).c_str());
    LOG_ASSERT_ERROR(m_barrier_acquire_list[master_core_id] == false, "Core(%i) or its sibling is already in the barrier (this is thread %d, we have thread %d)", master_core_id, thread_me, m_core_thread[master_core_id]);
 
-   if (time < m_next_barrier_time && !m_fastforward)
+   if (time < m_next_barrier_time && !m_fastforward) // time less than next barrier and current mode is Detaile Mode 
    {
       LOG_PRINT("Sent 'SIM_BARRIER_RELEASE' immediately time(%s), m_next_barrier_time(%s)", itostr(time).c_str(), itostr(m_next_barrier_time).c_str());
       // LOG_PRINT_WARNING("core_id(%i), local_clock(%llu), m_next_barrier_time(%llu), m_barrier_interval(%llu)", core_id, time, m_next_barrier_time, m_barrier_interval);
       CLOG("barrier", "Core %d immediate exit", core_id);
+//      if(m_fastforward) {
+//        doRelease(-1);
+//      }
       return;
    }
 
@@ -91,15 +112,74 @@ BarrierSyncServer::synchronize(core_id_t core_id, SubsecondTime time)
    m_local_clock_list[master_core_id] = time;
    m_barrier_acquire_list[master_core_id] = true;
    m_core_thread[master_core_id] = thread_me;
+//   if( m_fastforward ) { //if fast forward mode, release all threads
+//        m_barrier_acquire_list[master_core_id] = false;
+//        doRelease(-1);
+//        return;
+//   }
 
    bool mustWait = true;
+
    if (isBarrierReached())
       mustWait = barrierRelease(thread_me);
 
-   if (mustWait)
-      m_core_cond[master_core_id]->wait(Sim()->getThreadManager()->getLock());
-   else
+   if (mustWait) {
+       bool jump_out = true;
+
+       do {
+
+            SubsecondTime current_m_next_barrier_time = m_next_barrier_time;
+            std::vector<SubsecondTime> each_core_time_before_wait = getEachCoreTimeBeforeWait();
+          int error = m_core_cond[master_core_id]->wait(Sim()->getThreadManager()->getLock(),10*1e9); // wait for 1 second. If not coming, then other threads must be stuck by dead lock       
+//          int error = m_core_cond[master_core_id]->wait(Sim()->getThreadManager()->getLock(),1e4); // wait for 1 second. If not coming, then other threads must be stuck by dead lock       
+          jump_out = true; 
+          if( error == ETIMEDOUT ) {
+
+
+            std::vector<SubsecondTime> each_core_time_after_wait = getEachCoreTimeBeforeWait();
+            bool is_timeout = false;
+            if( m_next_barrier_time == current_m_next_barrier_time  ) {
+                uint32_t size1 = each_core_time_after_wait.size();
+                uint32_t size2 = each_core_time_before_wait.size();
+                if(size1!=size2) is_timeout = true;
+                else {
+                    is_timeout = true;
+                    for( uint32_t tmp_i = 0 ; tmp_i < size1 ; tmp_i++ ) {
+                        if(each_core_time_after_wait[tmp_i] != each_core_time_before_wait[tmp_i]) {
+                            is_timeout = false;    
+                            break;
+                        }
+                    }
+                }
+            }
+            if(is_timeout) {
+                    std::cout <<thread_me<<" timeout " << m_next_barrier_time << " " << current_m_next_barrier_time <<std::endl;      
+                    //simulator does not move forward for a longtime
+                    mustWait = barrierTimeoutRelease( current_m_next_barrier_time,thread_me );
+
+                    if( !mustWait) {
+                        master_core->getPerformanceModel()->barrierExit();
+                    } else {
+                        jump_out = false;
+                    }
+            } else if (master_core_id >= (int)m_local_clock_list.size() ) { 
+                jump_out = true;
+            } else if( m_local_clock_list[master_core_id] >= m_next_barrier_time ) { // simulator still running, be patient, wait 
+
+                std::cout <<thread_me<<" wait " << m_next_barrier_time << " " << current_m_next_barrier_time <<std::endl;      
+                jump_out = false;
+            }
+            if(jump_out) {
+                   // m_barrier_acquire_list[  ] == t;
+                if( master_core_id < (int)m_barrier_acquire_list.size() ) {
+                    m_barrier_acquire_list[master_core_id] = false;
+                }
+            }
+          } 
+        } while(!jump_out);
+   }  else {
       master_core->getPerformanceModel()->barrierExit();
+   }
 
    CLOG("barrier", "Core %d exit (master core %d, thread %d)", core_id, master_core_id, thread_me);
 }
@@ -236,6 +316,101 @@ BarrierSyncServer::isBarrierReached()
    return single_core_barrier_reached;
 }
 
+
+bool
+BarrierSyncServer::barrierTimeoutRelease(SubsecondTime current_time , thread_id_t caller_id, bool continue_until_release)
+{
+
+   CLOG("barrier", "Release (caller thread %d)", caller_id);
+   LOG_PRINT("Sending 'BARRIER_RELEASE'");
+
+   // All cores have reached the barrier
+   // Advance m_next_barrier_time
+   // Release the Barrier
+
+   LOG_ASSERT_ERROR(m_to_release.size() == 0, "Reached the barrier while some threads haven't even restarted?");
+   if (m_fastforward)
+   {
+      for (core_id_t core_id = 0; core_id < (core_id_t) Sim()->getConfig()->getApplicationCores(); core_id++)
+      {
+         // In fast-forward mode, skip over (potentially very many) timeslots
+         if (m_local_clock_list[core_id] > m_next_barrier_time)
+            m_next_barrier_time = m_local_clock_list[core_id];
+      }
+   }
+
+   // If a core cannot be resumed, we have to advance the sync
+   // time till a core can be resumed. Then only, will we have
+   // forward progress
+   bool is_all_barrier_released = true;
+   for (core_id_t core_id = 0; core_id < (core_id_t) Sim()->getConfig()->getApplicationCores(); core_id++) {
+   
+        if (m_barrier_acquire_list[core_id] == true) {
+            is_all_barrier_released = false;
+            break;
+        }
+   }
+   if( is_all_barrier_released ) {
+        return false;
+   }
+   bool core_resumed = false;
+   bool must_wait = true;
+   while (!core_resumed)
+   {
+      m_global_time = m_next_barrier_time;
+      CLOG("barrier", "Barrier %" PRId64 "ns", m_next_barrier_time.getNS());
+//      Sim()->getHooksManager()->callHooks(HookType::HOOK_PERIODIC, static_cast<subsecond_time_t>(m_next_barrier_time).m_time);
+
+
+      m_next_barrier_time += m_barrier_interval;
+      LOG_PRINT("m_next_barrier_time updated to (%s)", itostr(m_next_barrier_time).c_str());
+
+      for (core_id_t core_id = 0; core_id < (core_id_t) Sim()->getConfig()->getApplicationCores(); core_id++)
+      {
+         if (m_local_clock_list[core_id] < m_next_barrier_time)
+         {
+            // Check if this core was running. If yes, release that core
+            if (m_barrier_acquire_list[core_id] == true)
+            {
+               //Core *core = Sim()->getCoreManager()->getCoreFromID(core_id);
+               //LOG_ASSERT_ERROR(core->getState() == Core::RUNNING || core->getState() == Core::INITIALIZING, "(%i) has acquired barrier, local_clock(%s), m_next_barrier_time(%s), but not initializing or running", core_id, itostr(m_local_clock_list[core_id]).c_str(), itostr(m_next_barrier_time).c_str());
+
+               m_barrier_acquire_list[core_id] = false;
+               core_resumed = true;
+
+               if (m_core_thread[core_id] == caller_id)
+                  must_wait = false;
+               else
+               {
+                  Core *core = Sim()->getCoreManager()->getCoreFromID(core_id);
+                  core->getPerformanceModel()->barrierExit();
+                  m_to_release.push_back(core_id);
+                  std::cout  << "release : " << core_id << "\n";
+               }
+            }
+         }
+      }
+   }
+
+   // To avoid overwhelming the OS scheduler, we only release N threads at a time (N ~= host cores).
+   // Once a thread is done (stops executing because it completed the next barrier quantum, or due to thread stall),
+   // one more thread is released so we always have at most N running threads.
+   std::random_shuffle(m_to_release.begin(), m_to_release.end());
+   doRelease(m_fastforward ? -1 : Sim()->getConfig()->getNumHostCores());
+
+   return must_wait;
+}
+
+
+
+
+
+
+
+
+
+
+
 bool
 BarrierSyncServer::barrierRelease(thread_id_t caller_id, bool continue_until_release)
 {
@@ -247,6 +422,9 @@ BarrierSyncServer::barrierRelease(thread_id_t caller_id, bool continue_until_rel
    // Release the Barrier
 
    LOG_ASSERT_ERROR(m_to_release.size() == 0, "Reached the barrier while some threads haven't even restarted?");
+//    if(m_to_release.size() == 0) {
+//        return false;
+//    }   
 
    if (m_fastforward)
    {
@@ -275,8 +453,15 @@ BarrierSyncServer::barrierRelease(thread_id_t caller_id, bool continue_until_rel
          // If HOOK_PERIODIC woke someone up, this thread can safely go to sleep
          if (Sim()->getThreadManager()->anyThreadRunning())
             return false;
-         else
-            LOG_ASSERT_ERROR(Sim()->getSyscallServer()->getNextTimeout(m_global_time) < SubsecondTime::MaxTime(), "No threads running, no timeout. Application has deadlocked...");
+         else {
+             if( !m_fastforward ) {
+                LOG_ASSERT_ERROR(Sim()->getSyscallServer()->getNextTimeout(m_global_time) < SubsecondTime::MaxTime(), "No threads running, no timeout. Application has deadlocked...");
+             } 
+//             else
+//             {
+//                return true;
+//             }
+         }
       }
 
       // If the barrier was disabled from HOOK_PERIODIC (for instance, if roi-end was triggered from a script), break
@@ -380,7 +565,30 @@ BarrierSyncServer::setFastForward(bool fastforward, SubsecondTime next_barrier_t
       m_next_barrier_time = std::max(m_next_barrier_time, next_barrier_time);
    }
 }
-
+bool
+BarrierSyncServer::onlyMainCoreRunning(void)
+{
+   uint32_t active_core = 0;
+   for(core_id_t core_id = 0; core_id < (core_id_t) Sim()->getConfig()->getApplicationCores(); core_id++)
+   {
+      if (m_core_group[core_id] != INVALID_CORE_ID)
+      {
+        return false;
+      }
+      else if (m_barrier_acquire_list[core_id] == true)
+      {
+         if (m_local_clock_list[core_id] >= m_next_barrier_time)
+            printf(" ^");
+         else
+            printf(" A");
+      }
+      else if (isCoreRunning(core_id))
+      {
+        active_core++;
+      }
+   }
+   return (active_core==1);
+}
 void
 BarrierSyncServer::printState(void)
 {

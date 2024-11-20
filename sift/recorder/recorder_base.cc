@@ -16,6 +16,8 @@ VOID countInsns(THREADID threadid, INT32 count)
       thread_data[threadid].icount_reported += count;
       if (thread_data[threadid].icount_reported > KnobFlowControlFF.Value())
       {
+
+//         Sift::Mode mode = thread_data[threadid].output->Sync();
          Sift::Mode mode = thread_data[threadid].output->InstructionCount(thread_data[threadid].icount_reported);
          thread_data[threadid].icount_reported = 0;
          setInstrumentationMode(mode);
@@ -29,6 +31,7 @@ VOID countInsns(THREADID threadid, INT32 count)
       if (!thread_data[threadid].output)
          openFile(threadid);
       thread_data[threadid].icount = 0;
+      std::cerr << "Being triggered\n";
       in_roi = true;
       setInstrumentationMode(Sift::ModeDetailed);
    }
@@ -75,7 +78,7 @@ VOID sendInstruction(THREADID threadid, ADDRINT addr, UINT32 size, UINT32 num_ad
    thread_data[threadid].output->Instruction(addr, size, num_addresses, thread_data[threadid].dyn_addresses, is_branch, taken, is_predicate, executing);
    thread_data[threadid].num_dyn_addresses = 0;
 
-   if (KnobUseResponseFiles.Value() && KnobFlowControl.Value() && (thread_data[threadid].icount > thread_data[threadid].flowcontrol_target || ispause))
+   if(  (KnobUseResponseFiles.Value() && KnobFlowControl.Value() && (thread_data[threadid].icount > thread_data[threadid].flowcontrol_target || ispause)) )
    {
       Sift::Mode mode = thread_data[threadid].output->Sync();
       thread_data[threadid].flowcontrol_target = thread_data[threadid].icount + KnobFlowControl.Value();
@@ -232,12 +235,15 @@ static VOID traceCallback(TRACE trace, void *v)
             break;
       }
 
+
       if (!any_thread_in_detail)
       {
+          // for fast forward mode, do inst count
          BBL_InsertCall(bbl, IPOINT_ANYWHERE, (AFUNPTR)countInsns, IARG_THREAD_ID, IARG_UINT32, BBL_NumIns(bbl), IARG_END);
       }
       else if (current_mode == Sift::ModeDetailed)
       {
+
          for(INS ins = BBL_InsHead(bbl); ; ins = INS_Next(ins))
          {
             // For memory instructions, collect all addresses at IPOINT_BEFORE

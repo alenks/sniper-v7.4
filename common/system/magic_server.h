@@ -3,7 +3,9 @@
 
 #include "fixed_types.h"
 #include "progress.h"
-
+#include "bbv_count.h"
+#include <vector>
+#define MAX_NUM_THREADS 256
 class MagicServer
 {
    public:
@@ -14,6 +16,17 @@ class MagicServer
          UInt64 arg0, arg1;
          const char* str;
       };
+
+      // BBV information 
+      std::vector<std::vector<UInt64>> intraBbvLists[MAX_NUM_THREADS];
+      std::vector<UInt64> intraBbvIdxLists[MAX_NUM_THREADS];
+      std::vector<UInt64> intraprevBbvs[MAX_NUM_THREADS];
+
+      std::vector<std::vector<UInt64>> interBbvLists[MAX_NUM_THREADS];
+      std::vector<UInt64> interBbvIdxLists[MAX_NUM_THREADS];
+      std::vector<UInt64> interprevBbvs[MAX_NUM_THREADS];
+
+//      std::vector<UInt64> bbvs[MAX_NUM_THREADS];
 
       MagicServer();
       ~MagicServer();

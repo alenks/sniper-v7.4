@@ -3,7 +3,10 @@
 
 #include "fixed_types.h"
 #include "subsecond_time.h"
+
+#ifndef __PIN__
 #include "thread_manager.h"
+#endif
 
 #include <vector>
 #include <unordered_map>
@@ -38,9 +41,18 @@ public:
       HOOK_APPLICATION_ROI_BEGIN, // none                            ROI begin, always triggers
       HOOK_APPLICATION_ROI_END,   // none                            ROI end, always triggers
       HOOK_SIGUSR1,             // none                              Sniper process received SIGUSR1
+      HOOK_ATOMIC_BEGIN,        //
+      HOOK_ATOMIC_END,          //
+      HOOK_APPLICATION_ATOMIC_BEGIN, // HooksManager::AtomicBegin    always triggers
+      HOOK_APPLICATION_ATOMIC_END, // always triggers
+      HOOK_APPLICATION_BARRIER_BEGIN,   // HooksManager::ThreadTime        barrier, always triggers, one per barrier
+      HOOK_APPLICATION_BARRIER_END,   // HooksManager::ThreadTime        barrier, always triggers, one per barrier
+      HOOK_APPLICATION_OMP_BEGIN, // HooksManager::ThreadTime        barrier start, always triggers, one per thread
+      HOOK_APPLICATION_OMP_END,  // HooksManager::ThreadTime        barrier start, always triggers, one per thread
       HOOK_TYPES_MAX
    };
    static const char* hook_type_names[];
+   static const char *getHookName(hook_type_t hook_type);
 };
 
 namespace std
@@ -80,7 +92,11 @@ public:
    } ThreadTime;
    typedef struct {
       thread_id_t thread_id;  // Thread stalling
+#ifndef __PIN__
       ThreadManager::stall_type_t reason; // Reason for thread stall
+#else
+      unsigned int reason;
+#endif
       subsecond_time_t time;  // Time at which the stall occurs (if known, else SubsecondTime::MaxTime())
    } ThreadStall;
    typedef struct {
@@ -93,12 +109,58 @@ public:
       core_id_t core_id;      // Core the thread is now running (or INVALID_CORE_ID == -1 for unscheduled)
       subsecond_time_t time;  // Current time
    } ThreadMigrate;
+    class RegionType{
+    public:
+    enum InnerRegionType { PointUndef        = 0,
+    BarrierPointBegin = 1,
+    BarrierPointEnd   = 2,
+    RoutinePointBegin = 3,
+    RoutinePointEnd   = 4,
+    LoopPointBegin    = 5,
+    LoopPointEnd      = 6
+    };
+    InnerRegionType region_type;
+    RegionType( InnerRegionType para ) {
+        region_type = para;
+    }
+    RegionType(){
+        region_type = PointUndef;
+    }
+    operator uint32_t() {
+        return (uint32_t)region_type;
+    }
+    friend std::ostream & operator<<( std::ostream & out , RegionType in) {
+    std::string trace_type_str []= {
+        "PointUndef",
+        "BarrierPointBegin",
+        "BarrierPointEnd",
+        "RoutinePointBegin",
+        "RoutinePointEnd",
+        "LoopPointBegin",
+        "LoopPointEnd",
+    };
+    #define TRACE_TYPE_STR_LEN 7
+    if( (uint32_t)in >= TRACE_TYPE_STR_LEN ) {
+        std::cerr << "index numer out of array";
+         exit(-1);
+    } else {
+        out << trace_type_str[ (uint32_t)in];
+    }
+    return out;
+    }
+    }; 
+   typedef struct AtomicBegin{
+      thread_id_t thread_id;
+      UInt64 region_id;
+      RegionType region_type;
 
+   } AtomicBegin;
+ 
    HooksManager();
    void init();
    void fini();
    void registerHook(HookType::hook_type_t type, HookCallbackFunc func, UInt64 argument, HookCallbackOrder order = ORDER_NOTIFY_PRE);
-   SInt64 callHooks(HookType::hook_type_t type, UInt64 argument, bool expect_return = false);
+   SInt64 callHooks(HookType::hook_type_t type, UInt64 argument, bool expect_return = false, std::vector<SInt64> *return_values = NULL);
 
 private:
    std::unordered_map<HookType::hook_type_t, std::vector<HookCallback> > m_registry;

@@ -6,7 +6,7 @@
 #include "papi.h"
 
 #include <pin.H>
-
+#include <iostream>
 static AFUNPTR ptr_exit = NULL;
 
 static void handleRdtsc(THREADID threadid, PIN_REGISTER * gax, PIN_REGISTER * gdx)
@@ -139,7 +139,9 @@ void emuKmpReapMonitor(THREADID threadIndex, CONTEXT *ctxt)
    {
       if (thread_data[i].output)
       {
+         std::cerr << "[SIFT_RECORDER:" << __FUNCTION__ << " end of function\n " ;
          closeFile(i);
+
       }
    }
 
@@ -167,10 +169,10 @@ static void traceCallback(TRACE trace, VOID *v)
       std::string rtn_name = RTN_Name(rtn);
 
       // icc/openmp compatibility
-      if (rtn_name == "__kmp_reap_monitor" || rtn_name == "__kmp_internal_end_atexit")
-      {
-         TRACE_InsertCall(trace, IPOINT_BEFORE, AFUNPTR(emuKmpReapMonitor), IARG_THREAD_ID, IARG_CONTEXT, IARG_END);
-      }
+//      if (rtn_name == "__kmp_reap_monitor" || rtn_name == "__kmp_internal_end_atexit")
+//      {
+//         TRACE_InsertCall(trace, IPOINT_BEFORE, AFUNPTR(emuKmpReapMonitor), IARG_THREAD_ID, IARG_CONTEXT, IARG_END);
+//      }
    }
 }
 

@@ -11,6 +11,11 @@
 #include "stats.h"
 #include "timer.h"
 #include "thread.h"
+#include <cstdlib> // abs
+#include <limits.h>
+#include "bbv_count.h"
+#define THRESHOLD_DISTANCE 10000000000
+#define CMP_NUM_REGIONS 2
 
 MagicServer::MagicServer()
       : m_performance_enabled(false)
@@ -18,7 +23,24 @@ MagicServer::MagicServer()
 }
 
 MagicServer::~MagicServer()
-{ }
+{ 
+    // std::cerr << "\n [MAGIC SERVER] BBV:";
+    // for (UInt64 i = 0; i < bbvList[0].size(); i++)
+        // std::cerr << " " << bbvList.back()[i] + prevBbv[i];
+    // std::cerr << "\n";
+
+    // for (UInt64 i = 0; i < bbvList.size(); i++) {
+        // std::cerr << "[MAGIC SERVER] BBV list (" << i << "): "; 
+        // for (UInt64 j = 0; j < bbvList[i].size(); j++)
+            // std::cerr << bbvList[i][j] << " ";
+        // std::cerr << "\n";
+    // }
+
+//    std::cerr << "\n" << bbvIdxList.size() << " out of " << bbvList.size() << " simulated in detail\n\n" << "\nBBV Index List:";
+//    for (UInt64 i = 0; i < bbvIdxList.size(); i++)
+//       std::cerr << " " << bbvIdxList[i];
+//    std::cerr << "\n\n"; 
+}
 
 UInt64 MagicServer::Magic(thread_id_t thread_id, core_id_t core_id, UInt64 cmd, UInt64 arg0, UInt64 arg1)
 {
@@ -26,6 +48,111 @@ UInt64 MagicServer::Magic(thread_id_t thread_id, core_id_t core_id, UInt64 cmd, 
 
    return Magic_unlocked(thread_id, core_id, cmd, arg0, arg1);
 }
+
+
+UInt64 get_cluster_id( std::vector<UInt64> & prevBbv, 
+                       std::vector<UInt64> & bbv,
+                       std::vector<UInt64> & bbvIdxList,
+                       std::vector<std::vector<UInt64>> & bbvList
+        ) {
+            UInt64 ret = 0;
+//                // Update previously recorded BBV
+//                if (!bbv.empty()) {
+//                   if (prevBbv.empty()) {
+//                      for (UInt64 i = 0; i < bbv.size(); i++)
+//                         prevBbv.push_back(bbv[i]);
+//                   }
+//                   else {
+//                      for (UInt64 i = 0; i < bbv.size(); i++)
+//                         prevBbv[i] = bbv[i];
+//                   }
+//                }
+//                
+//                // Get BBV (i.e. m_bbv_counts_abs vector)
+////                bbv = bbvCount->getBbvList();
+//
+//                // Update inter-barrier regions' BBV list
+//                bbvList.push_back(bbv);
+//
+//                // Get relative BBV for the current region
+//                // (i.e. BBV obtained - BBV obtained until the previous inter-barrier region)
+//                if (!bbvList.empty() && !prevBbv.empty()) {
+//                    for (UInt64 i = 0; i < bbv.size(); i++) { 
+//                       bbvList.back()[i] = bbv[i] - prevBbv[i];
+//                       std::cout << bbvList.back()[i] <<  " " ; 
+//                    }
+//                    std::cout << "\n";
+//                }
+//
+//                int ret = -1;
+//
+//                // If current BBV is the first BBV recorded
+//                // Add it to bbvIdxList, return BBV index (i.e., 0)
+//                if (bbvList.empty()) { 
+//                   bbvIdxList.push_back(0);
+//                   printf("[MAGIC SERVER] Detailed (First region)\n");
+//                   ret = 0;   
+//                }
+//
+//                // Else, check if distance of current BBV is less than or
+//                // equal to any previously simulated regions
+//                // Compare with CMP_NUM_REGIONS regions
+//                else {
+//
+//                    UInt64 distance = 0;
+//                    unsigned long long minDistance = ULLONG_MAX;
+//                    int numRegions = 0;
+//                    int bbvIdx = 0;
+//
+//                    // Check distance from BBVs corresponding to each entry in the bbvIdxList
+//                    for (UInt64 i = 0; i < bbvIdxList.size(); i++) {
+//
+//                       distance = 0;
+//                       bbvIdx = bbvIdxList[i];
+//                       
+//                       // Get Manhattan distance 
+//                       // (i.e. summation of absolute difference b/w respective coordinates)
+//                       for (UInt64 j = 0; j < bbvList[bbvIdx].size(); j++)
+//                           distance += abs(bbvList[bbvIdx][j] - bbvList.back()[j]);
+//
+//                       // printf("BBV Distance %ld\t Minimum distance %llu\t Num Regions Passed: (%d / %d)\n", distance, minDistance, numRegions, i+1);
+//
+//                       // If distance is less than THRESHOLD_DISTANCE
+//                       // Update number of regions compared, minimum distance recorded and BBV index (ret)
+//                       if (distance < THRESHOLD_DISTANCE) {
+//                           numRegions++;
+//                           if (distance < minDistance) {
+//                              minDistance = distance;
+//                              ret = bbvIdx;
+//                           }
+//
+//                           // If distances have been compared for CMP_NUM_REGIONS, stop
+//                           if (numRegions == CMP_NUM_REGIONS)
+//                              break;
+//                       }
+//                    }
+//
+//                    if (numRegions)
+//                       printf("[MAGIC SERVER] Fast-forward (%d regions compared, Minimum distance from BBV %d: %llu)\n", numRegions, ret, minDistance);
+//
+//                    // If the distance from all of the previously simulated BBVs exceeds THRESHOLD_DISTANCE
+//                    // update bbvIdxList, return current BBV index
+//                    if (ret == -1) {
+//                       bbvIdx = bbvList.size() - 1;
+//                       bbvIdxList.push_back(bbvIdx);
+//                       printf("[MAGIC SERVER] Detailed (distances from all previously simulated BBVs exceed THRESHOLD_DISTANCE)\n");
+//                       ret = bbvIdx;
+//                    }
+//                    }
+        return (UInt64)ret;
+}
+
+
+
+
+
+
+
 
 UInt64 MagicServer::Magic_unlocked(thread_id_t thread_id, core_id_t core_id, UInt64 cmd, UInt64 arg0, UInt64 arg1)
 {
@@ -84,6 +211,98 @@ UInt64 MagicServer::Magic_unlocked(thread_id_t thread_id, core_id_t core_id, UIn
          Sim()->getThreadManager()->getThreadFromID(thread_id)->setName(str);
          return 0;
       }
+      case SIM_CMD_GET_BARRIER_REACHED:
+      {
+         bool reached = Sim()->getClockSkewMinimizationServer()->onlyMainCoreRunning();
+         UInt64 ret = (UInt64)reached;
+         Sim()->getClockSkewMinimizationServer()->printState();
+         return ret;
+      }
+      case SIM_CMD_GET_SIM_TIME:
+      {
+          StatsMetricBase * tmp = Sim()->getStatsManager()->getMetricObject("barrier", 0,"global_time");
+          if(tmp == NULL) {
+            return 0;
+          } else { 
+            UInt64 ret = tmp->recordMetric();
+            return ret;
+          }
+//         Core *core = Sim()->getCoreManager()->getCoreFromID(core_id);
+//         SubsecondTime curr_elapsed_time = core->getPerformanceModel()->getElapsedTime();
+//         return curr_elapsed_time.getFS();
+      }
+      case SIM_CMD_GET_INS_NUM:
+      {
+          StatsMetricBase * tmp = Sim()->getStatsManager()->getMetricObject("core", arg0,"instructions");
+          if(tmp == NULL) {
+            return 0;
+          } else {
+            
+            UInt64 ret = tmp->recordMetric();
+            return ret;
+          }
+      }
+
+      // Enable BBVs
+      case SIM_CMD_ENABLE_BBV:
+      {
+          Sim()->getConfig()->setBBVsEnabled(true);
+          return 0;
+      }
+
+      // Get BBV cluster IDs
+      case SIM_CMD_GET_BBV:
+      {
+
+          // Get BBV information from backend
+          BbvCount *bbvCount = Sim()->getCoreManager()->getCoreFromID(core_id)->getBbvCount();
+          const UInt64 current_barrier_id = arg1;
+          const UInt64 thread_id = arg0;
+          const std::string bbv_name[] = {"bbv-0","bbv-1","bbv-2","bbv-3","bbv-4","bbv-5","bbv-6","bbv-7","bbv-8","bbv-9","bbv-10","bbv-11","bbv-12","bbv-13","bbv-14","bbv-15" };
+//          bbvs[threadid]= std::vector<UInt64>(BbvCount::NUM_BBV);
+
+          std::vector<UInt64> bbv = std::vector<UInt64>(BbvCount::NUM_BBV);
+
+        
+          std::cout << "bbv ";
+          for (uint32_t i = 0 ; i < BbvCount::NUM_BBV; i++ ) {
+              StatsMetricBase * tmp = Sim()->getStatsManager()->getMetricObject("core", thread_id , "bbv-0" );
+              UInt64 ret2;
+              if(tmp == NULL) {
+
+                std::cout <<  "Empty ";
+                ret2 = 0;
+              } else {
+            
+                ret2 = tmp->recordMetric();
+            
+              }
+              bbv[i] = ret2;
+              std::cout << ret2 << " ";
+          }
+          std::cout << "\n";
+          UInt64 ret; 
+          if( current_barrier_id >= interBbvLists[thread_id].size() ) { // try to get inter barrier id for each thread
+                ret = get_cluster_id( interprevBbvs[thread_id], 
+                       bbv,
+                       interBbvIdxLists[thread_id],
+                       interBbvLists[thread_id]);
+                intraBbvLists[thread_id].clear();
+                intraBbvIdxLists[thread_id].clear();
+                get_cluster_id( intraprevBbvs[thread_id], 
+                       bbv,
+                       intraBbvIdxLists[thread_id],
+                       intraBbvLists[thread_id]);
+          } {
+                ret = get_cluster_id( intraprevBbvs[thread_id], 
+                       bbv,
+                       intraBbvIdxLists[thread_id],
+                       intraBbvLists[thread_id]);
+           
+          }
+          return ret;
+      }
+
       case SIM_CMD_MARKER:
       {
          MagicMarkerType args = { thread_id: thread_id, core_id: core_id, arg0: arg0, arg1: arg1, str: NULL };
@@ -119,7 +338,7 @@ __attribute__((weak)) void PinDetach(void) {}
 
 void MagicServer::enablePerformance()
 {
-   Sim()->getStatsManager()->recordStats("roi-begin");
+//   Sim()->getStatsManager()->recordStats("roi-begin");
    ninstrs_start = getGlobalInstructionCount();
    t_start.start();
 
@@ -130,7 +349,7 @@ void MagicServer::enablePerformance()
 void MagicServer::disablePerformance()
 {
    Simulator::disablePerformanceModels();
-   Sim()->getStatsManager()->recordStats("roi-end");
+ //  Sim()->getStatsManager()->recordStats("roi-end");
 
    float seconds = t_start.getTime() / 1e9;
    UInt64 ninstrs = getGlobalInstructionCount() - ninstrs_start;

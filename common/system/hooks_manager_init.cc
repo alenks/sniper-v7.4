@@ -1,5 +1,7 @@
 #include "hooks_manager.h"
 
+#ifndef __PIN__
+
 #include "hooks_py.h"
 
 #include "subsecond_time.h"
@@ -51,3 +53,15 @@ void HooksManager::fini(void)
 {
    HooksPy::fini();
 }
+
+#else /* ifdef __PIN__ */
+
+void HooksManager::init(void)
+{
+}
+
+void HooksManager::fini(void)
+{
+}
+
+#endif /* ifndef __PIN__ */

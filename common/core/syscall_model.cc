@@ -156,7 +156,6 @@ bool SyscallMdl::runEnter(IntPtr syscall_number, syscall_args_t &args)
       case SYS_pause:
       case SYS_select:
       case SYS_poll:
-      case SYS_wait4:
       {
          // System call is blocking, mark thread as asleep
          ScopedLock sl(Sim()->getThreadManager()->getLock());
@@ -164,6 +163,21 @@ bool SyscallMdl::runEnter(IntPtr syscall_number, syscall_args_t &args)
                                                       syscall_number == SYS_pause ? ThreadManager::STALL_PAUSE : ThreadManager::STALL_SYSCALL,
                                                       m_thread->getCore()->getPerformanceModel()->getElapsedTime());
          m_stalled = true;
+         break;
+      }
+      case SYS_wait4:
+      {
+         // System call is blocking, mark thread as asleep
+
+         Sim()->getClockSkewMinimizationServer()->printState();
+         bool reached = Sim()->getClockSkewMinimizationServer()->onlyMainCoreRunning();
+         if( !reached ) {
+             ScopedLock sl(Sim()->getThreadManager()->getLock());
+             Sim()->getThreadManager()->stallThread_async(m_thread->getId(),
+                                                      syscall_number == SYS_pause ? ThreadManager::STALL_PAUSE : ThreadManager::STALL_SYSCALL,
+                                                      m_thread->getCore()->getPerformanceModel()->getElapsedTime());
+             m_stalled = true;
+         } 
          break;
       }
 

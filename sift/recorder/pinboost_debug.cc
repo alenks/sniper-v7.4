@@ -9,10 +9,10 @@
 #include <unistd.h>
 #include <iostream>
 #include <cstdlib>
-
+#include "log2.h"
 bool assert_ignore();
-
-bool pinboost_do_debug = false;
+#include "threads.h"
+bool pinboost_do_debug = true;
 static std::string pinboost_name = "PINBOOST";
 
 static EXCEPT_HANDLING_RESULT pinboost_exceptionhandler(THREADID threadid, EXCEPTION_INFO *pExceptInfo, PHYSICAL_CONTEXT *pPhysCtxt, VOID *v)
@@ -32,8 +32,10 @@ static EXCEPT_HANDLING_RESULT pinboost_exceptionhandler(THREADID threadid, EXCEP
 
       bool success = pinboost_backtrace(pExceptInfo, pPhysCtxt);
       // Light error message in case printing a full backtrace failed
-      if (!success)
-         std::cerr << "["<<pinboost_name<<"] Internal exception:" << PIN_ExceptionToString(pExceptInfo) << std::endl;
+      if (!success) {
+         std::cerr << "["<<pinboost_name<<"] Internal exception:" << threadid<< " "<<  PIN_ExceptionToString(pExceptInfo) << std::endl;
+         std::cerr << "threadnum: " << thread_data[threadid].thread_num << "\n";
+      }
 
       if (pinboost_do_debug)
          pinboost_debugme(threadid);
@@ -52,6 +54,7 @@ static EXCEPT_HANDLING_RESULT pinboost_exceptionhandler(THREADID threadid, EXCEP
 
 void pinboost_register(const char* name, bool do_screen_debug)
 {
+   std::cerr << "pinboost register: " << name << "\n";
    PIN_AddInternalExceptionHandler(pinboost_exceptionhandler, NULL);
    if (name)
       pinboost_name = name;

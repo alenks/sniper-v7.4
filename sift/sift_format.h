@@ -115,6 +115,7 @@ namespace Sift
       RecOtherInstructionCount,
       RecOtherCacheOnly,
       RecOtherISAChange,
+      RecOtherNewThreadNoResponse,
       RecOtherEnd = 0xff,
    } RecOtherType;
 

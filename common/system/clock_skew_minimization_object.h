@@ -56,8 +56,10 @@ public:
    static ClockSkewMinimizationServer* create();
 
    virtual void synchronize(thread_id_t thread_id, SubsecondTime time) = 0;
+   virtual bool isBarrierReached(void) = 0;
    virtual void release() = 0;
    virtual void advance() = 0;
+   virtual bool isFastForward() = 0;
    virtual void setDisable(bool disable) { }
    virtual void setGroup(core_id_t core_id, core_id_t master_core_id) = 0;
    virtual void setFastForward(bool fastforward, SubsecondTime next_barrier_time = SubsecondTime::MaxTime()) = 0;
@@ -65,6 +67,7 @@ public:
    virtual void setBarrierInterval(SubsecondTime barrier_interval) = 0;
    virtual SubsecondTime getBarrierInterval() const = 0;
 
+   virtual bool onlyMainCoreRunning(void) = 0;
    virtual void printState(void) {}
 };
 

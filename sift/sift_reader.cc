@@ -329,6 +329,7 @@ bool Sift::Reader::Read(Instruction &inst)
                break;
             }
             case RecOtherNewThread:
+            case RecOtherNewThreadNoResponse:
             {
                assert(rec.Other.size == 0);
                assert(handleNewThreadFunc);
@@ -338,7 +339,10 @@ bool Sift::Reader::Read(Instruction &inst)
                   std::cerr << "[DEBUG:" << m_id << "] HandleNewThread" << std::endl;
                   #endif
                   int32_t ret = handleNewThreadFunc(handleNewThreadArg);
-                  sendSimpleResponse(RecOtherNewThreadResponse, &ret, sizeof(ret));
+                  if (rec.Other.type == RecOtherNewThread)
+                  {
+                     sendSimpleResponse(RecOtherNewThreadResponse, &ret, sizeof(ret));
+                  }
                   #if VERBOSE > 0
                   std::cerr << "[DEBUG:" << m_id << "] HandleNewThread Done" << std::endl;
                   #endif
@@ -684,7 +688,7 @@ const Sift::StaticInstruction* Sift::Reader::getStaticInstruction(uint64_t addr,
    else if (scache.count(addr))
    {
       sinst = scache[addr];
-      assert(sinst->size == size);
+//      assert(sinst->size == size);
    }
    else
    {

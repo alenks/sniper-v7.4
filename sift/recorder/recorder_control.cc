@@ -4,6 +4,7 @@
 #include "syscall_modeling.h"
 #include "sift_assert.h"
 #include "../../include/sim_api.h"
+#include "tool_warmup.h"
 
 #include <iostream>
 #include <stdlib.h>
@@ -320,7 +321,8 @@ ADDRINT translateAddress(ADDRINT addr, ADDRINT size)
 
 static void getCode(uint8_t *dst, const uint8_t *src, uint32_t size)
 {
-   PIN_SafeCopy(dst, (void*)translateAddress(ADDRINT(src), size), size);
+    PinToolWarmup::getCode(dst,src,size);
+    PIN_SafeCopy(dst, (void*)translateAddress(ADDRINT(src), size), size);
 }
 
 void openFile(THREADID threadid)
@@ -370,7 +372,9 @@ void openFile(THREADID threadid)
    #else
       const bool arch32 = false;
    #endif
+
    thread_data[threadid].output = new Sift::Writer(filename, getCode, KnobUseResponseFiles.Value() ? false : true, response_filename, threadid, arch32, false, KnobSendPhysicalAddresses.Value());
+   
 
    if (!thread_data[threadid].output->IsOpen())
    {
@@ -379,6 +383,7 @@ void openFile(THREADID threadid)
    }
 
    thread_data[threadid].output->setHandleAccessMemoryFunc(handleAccessMemory, reinterpret_cast<void*>(threadid));
+
 }
 
 void closeFile(THREADID threadid)
@@ -394,6 +399,7 @@ void closeFile(THREADID threadid)
    Sift::Writer *output = thread_data[threadid].output;
    thread_data[threadid].output = NULL;
    // Thread will stop writing to output from this point on
+
    output->End();
    delete output;
 
@@ -411,7 +417,7 @@ void closeFile(THREADID threadid)
 
       FILE *fp = fopen(filename, "w");
       fprintf(fp, "%" PRIu64 "\n", thread_data[threadid].bbv->getInstructionCount());
-      for(int i = 0; i < Bbv::NUM_BBV; ++i)
+      for(int i = 0; i < NUM_BBV; ++i)
          fprintf(fp, "%" PRIu64 "\n", thread_data[threadid].bbv->getDimension(i) / thread_data[threadid].bbv->getInstructionCount());
       fclose(fp);
 

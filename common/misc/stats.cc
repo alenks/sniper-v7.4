@@ -158,6 +158,7 @@ StatsManager::recordStats(String prefix)
                sqlite3_bind_int(m_stmt_insert_value, 2, it2->second.first);   // Metric ID
                sqlite3_bind_int(m_stmt_insert_value, 3, it3->second->index);  // Core ID
                sqlite3_bind_int64(m_stmt_insert_value, 4, it3->second->recordMetric());
+               //std::cout << it1->first << " " << it2->first <<  "\n";
                res = sqlite3_step(m_stmt_insert_value);
                LOG_ASSERT_ERROR(res == SQLITE_DONE, "Error executing SQL statement: %s", sqlite3_errmsg(m_db));
             }

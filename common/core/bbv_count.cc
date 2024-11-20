@@ -3,7 +3,7 @@
 #include "config.hpp"
 #include "stats.h"
 #include "rng.h"
-
+#include "log2.h"
 BbvCount::BbvCount(core_id_t core_id)
    : m_core_id(core_id)
    , m_instrs_abs(0)

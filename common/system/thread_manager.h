@@ -19,7 +19,7 @@ class ThreadManager
 public:
    typedef void *(*thread_func_t)(void *);
 
-   enum stall_type_t {
+   enum stall_type_t : unsigned int {
       STALL_UNSCHEDULED,      // Thread is not scheduled on any core
       STALL_BROKEN,           // Thread is on a core that suffered hardware failure
       STALL_JOIN,             // Thread is calling pthread_join
@@ -36,7 +36,7 @@ public:
 
    ThreadManager();
    ~ThreadManager();
-
+   bool is_fastforward = false;
    Lock &getLock() { return m_thread_lock; }
    Scheduler *getScheduler() const { return m_scheduler; }
 
@@ -71,7 +71,6 @@ public:
    bool anyThreadRunning();
 
    void moveThread(thread_id_t thread_id, core_id_t core_id, SubsecondTime time);
-
    bool areAllCoresRunning();
 
 private:

@@ -313,10 +313,14 @@ void ThreadManager::joinThread(thread_id_t thread_id, thread_id_t join_thread_id
       m_thread_state[join_thread_id].waiter = thread_id;
       end_time = stallThread(thread_id, ThreadManager::STALL_JOIN, start_time);
    }
-
-   if (thread->reschedule(end_time, core))
-      core = thread->getCore();
-
+   if(is_fastforward) {
+      //core = thread->getCore();
+      is_fastforward = false;
+      return;
+   } else {
+       if (thread->reschedule(end_time, core) )
+          core = thread->getCore();
+   }
    core->getPerformanceModel()->queuePseudoInstruction(new SyncInstruction(end_time, SyncInstruction::JOIN));
 
    LOG_PRINT("Exiting join thread.");
@@ -355,6 +359,11 @@ SubsecondTime ThreadManager::stallThread(thread_id_t thread_id, stall_type_t rea
    while(!anyThreadRunning())
    {
       Sim()->getClockSkewMinimizationServer()->advance();
+
+      if(Sim()->getClockSkewMinimizationServer()->isFastForward()) {
+        is_fastforward = true;
+        break;
+      }
    }
    // It's possible that a HOOK_PERIODIC, called by SkewMinServer::signal(), called by stallThread_async(), woke us up again.
    // We will then have been signal()d, but this signal was lost since we weren't in wait()

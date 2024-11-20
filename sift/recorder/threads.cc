@@ -31,11 +31,16 @@ static VOID threadStart(THREADID threadid, CONTEXT *ctxt, INT32 flags, VOID *v)
    {
       thread_data[threadid].tid_ptr = tidptrs.front();
       tidptrs.pop_front();
+   } else {
+     thread_data[threadid].tid_ptr = 0;
    }
+   thread_data[threadid].thread_num = num_threads;
+   num_threads++;
    PIN_ReleaseLock(&new_threadid_lock);
 
-   thread_data[threadid].thread_num = num_threads++;
-   thread_data[threadid].bbv = new Bbv();
+   
+//   thread_data[threadid].thread_num = threadid;
+   thread_data[threadid].bbv = new Bbv(threadid);
 
    if (threadid > 0 && (any_thread_in_detail || KnobEmulateSyscalls.Value()))
    {
@@ -52,28 +57,39 @@ static VOID threadStart(THREADID threadid, CONTEXT *ctxt, INT32 flags, VOID *v)
 
 static VOID threadFinishHelper(VOID *arg)
 {
+
    uint64_t threadid = reinterpret_cast<uint64_t>(arg);
-   if (thread_data[threadid].tid_ptr)
+   std::cerr << "[SIFT_RECORDER:" << 0 << ":" << thread_data[threadid].thread_num << "] Finish Thread" << std::endl;
+
+   if (thread_data[threadid].tid_ptr!=0)
    {
+      std::cerr << "[SIFT_RECORDER:" << 0 << ":" << thread_data[threadid].thread_num << "] free tid" << std::endl;
       // Set this pointer to 0 to indicate that this thread is complete
       intptr_t tid = (intptr_t)thread_data[threadid].tid_ptr;
-      *(int*)tid = 0;
+//      thread_data[threadid].tid_ptr = 0;
+      const int32_t zero = 0;
+      PIN_SafeCopy( (int*)tid , &zero, sizeof(int));
+//      *(int*)tid = 0;
       // Send the FUTEX_WAKE to the simulator to wake up a potential pthread_join() caller
       syscall_args_t args = {0};
       args[0] = (intptr_t)tid;
       args[1] = FUTEX_WAKE;
       args[2] = 1;
+      std::cerr << "[SIFT_RECORDER:" << 0 << ":" << thread_data[threadid].thread_num << "] before syscall" << std::endl;
       thread_data[threadid].output->Syscall(SYS_futex, (char*)args, sizeof(args));
+      std::cerr << "[SIFT_RECORDER:" << 0 << ":" << thread_data[threadid].thread_num << "] after syscall" << std::endl;
    }
 
+   std::cerr << "[SIFT_RECORDER:" << 0 << ":" << thread_data[threadid].thread_num << "] try to close file" << std::endl;
    if (thread_data[threadid].output)
    {
       closeFile(threadid);
    }
-
+//future : try to store bbv data into a temp vec
    delete thread_data[threadid].bbv;
 
    thread_data[threadid].bbv = NULL;
+   std::cerr << "[SIFT_RECORDER:" << 0 << ":" << thread_data[threadid].thread_num << "] Return" << std::endl;
 }
 
 static VOID threadFinish(THREADID threadid, const CONTEXT *ctxt, INT32 flags, VOID *v)
@@ -95,7 +111,7 @@ static VOID threadFinish(THREADID threadid, const CONTEXT *ctxt, INT32 flags, VO
    // To prevent deadlocks during simulation, start a new thread to handle this thread's
    // cleanup.  This is needed because this function could be called in the context of
    // another thread, creating a deadlock scenario.
-   PIN_SpawnInternalThread(threadFinishHelper, (VOID*)(unsigned long)threadid, 0, NULL);
+   PIN_SpawnInternalThread(threadFinishHelper, (VOID*)(uint64_t)threadid, 0, NULL);
 }
 
 void initThreads()

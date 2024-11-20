@@ -6,7 +6,7 @@
 #include <linux/futex.h>
 #include <asm/errno.h> // For EINTR on older kernels
 #include <limits.h>
-
+#include <iostream>
 ConditionVariable::ConditionVariable()
    : m_futx(0)
 {
@@ -22,7 +22,7 @@ ConditionVariable::~ConditionVariable()
    #endif
 }
 
-void ConditionVariable::wait(Lock& lock, UInt64 timeout_ns)
+int ConditionVariable::wait(Lock& lock, UInt64 timeout_ns)
 {
    m_lock.acquire();
 
@@ -40,13 +40,21 @@ void ConditionVariable::wait(Lock& lock, UInt64 timeout_ns)
    struct timespec timeout = { time_t(timeout_ns / 1000000000), time_t(timeout_ns % 1000000000) };
 
    int res;
+   int error = 0;
    do {
+//      try {
       res = syscall(SYS_futex, (void*) &m_futx, FUTEX_WAIT | FUTEX_PRIVATE_FLAG, 0, timeout_ns > 0 ? &timeout : NULL, NULL, 0);
+//      } catch( int error2 ) {
       // Restart futex_wait if it was interrupted by a signal
+//        if(errno == ETIMEDOUT) {
+            error = errno;
+        
+
    }
    while (res == -EINTR);
 
    lock.acquire();
+   return error;
 }
 
 void ConditionVariable::signal()

@@ -96,16 +96,20 @@ XED_DEP=$(XED_HOME)/include/xed/xed-iclass-enum.h
 xed: mbuild xed_install $(XED_DEP)
 $(XED_DEP): $(XED_INSTALL_DEP)
 	$(_MSG) '[INSTAL] xed'
-	$(_CMD) cd $(XED_INSTALL) ; ./mfile.py --silent --extra-flags=-fPIC --shared --install-dir $(XED_HOME) install
+	$(_CMD) cd $(XED_INSTALL) ; python2 ./mfile.py --silent --extra-flags=-fPIC --shared --install-dir $(XED_HOME) install
 
 
 PIN_DOWNLOAD=https://software.intel.com/sites/landingpage/pintool/downloads/pin-3.18-98332-gaebd7b1e6-gcc-linux.tar.gz
 PIN_DEP=$(PIN_HOME)/intel64/lib-ext/libpin3dwarf.so
+
+PIN_FILE_NAME=pin-3.18-98332-gaebd7b1e6-gcc-linux.tar.gz
 pin_kit: $(PIN_DEP)
 $(PIN_DEP):
 	$(_MSG) '[DOWNLO] Pin 3.18-98332'
 	$(_CMD) mkdir -p $(PIN_HOME)
-	$(_CMD) wget -O - --no-verbose --quiet $(PIN_DOWNLOAD) | tar -x -z --strip-components 1 -C $(PIN_HOME)
+	$(_CMD) wget -O $(shell basename $(PIN_DOWNLOAD)) --no-verbose --quiet $(PIN_DOWNLOAD)
+	$(_CMD) tar -x -f $(shell basename $(PIN_DOWNLOAD)) --auto-compress --strip-components 1 -C $(PIN_HOME) 
+	$(_CMD) rm $(shell basename $(PIN_DOWNLOAD)) 
 	$(_CMD) touch $(PIN_HOME)/.autodownloaded
 
 
@@ -128,11 +132,14 @@ endif
 
 ifneq ($(NO_PYTHON_DOWNLOAD),1)
 PYTHON_DEP=python_kit/$(SNIPER_TARGET_ARCH)/lib/python2.7/lib-dynload/_sqlite3.so
+PYTHON_FILE_NAME=sniper-python27-$(SNIPER_TARGET_ARCH).tgz
+PYTHON_DOWLOAD="http://snipersim.org/packages/sniper-python27-$(SNIPER_TARGET_ARCH).tgz" 
+PYTHON_HOME2=python_kit/$(SNIPER_TARGET_ARCH)
 python: $(PYTHON_DEP)
 $(PYTHON_DEP):
 	$(_MSG) '[DOWNLO] Python $(SNIPER_TARGET_ARCH)'
 	$(_CMD) mkdir -p python_kit/$(SNIPER_TARGET_ARCH)
-	$(_CMD) wget -O - --no-verbose --quiet "http://snipersim.org/packages/sniper-python27-$(SNIPER_TARGET_ARCH).tgz" | tar xz --strip-components 1 -C python_kit/$(SNIPER_TARGET_ARCH)
+	$(_CMD) wget -O - --no-verbose --quiet "https://snipersim.org/packages/sniper-python27-$(SNIPER_TARGET_ARCH).tgz" | tar xz --strip-components 1 -C python_kit/$(SNIPER_TARGET_ARCH) 
 endif
 
 ifneq ($(NO_MCPAT_DOWNLOAD),1)
@@ -141,6 +148,7 @@ mcpat/mcpat-1.0:
 	$(_MSG) '[DOWNLO] McPAT'
 	$(_CMD) mkdir -p mcpat
 	$(_CMD) wget -O - --no-verbose --quiet "http://snipersim.org/packages/mcpat-1.0.tgz" | tar xz -C mcpat
+
 endif
 
 linux: include/linux/perf_event.h

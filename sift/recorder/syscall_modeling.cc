@@ -40,6 +40,7 @@ bool handleAccessMemory(void *arg, Sift::MemoryLockType lock_signal, Sift::Memor
    return true;
 }
 
+    PIN_LOCK private_lock;
 // Emulate all system calls
 // Do this as a regular callback (versus syscall enter/exit functions) as those hold the global pin lock
 VOID emulateSyscallFunc(THREADID threadid, CONTEXT *ctxt)
@@ -98,6 +99,10 @@ VOID emulateSyscallFunc(THREADID threadid, CONTEXT *ctxt)
 
    if (KnobEmulateSyscalls.Value() && thread_data[threadid].output)
    {
+
+//        PIN_GetLock(&private_lock, 0);
+//      std::cerr << "thread id " << threadid << " syscall : " << syscall_number<<"\n";
+//        PIN_ReleaseLock(&private_lock);
       switch(syscall_number)
       {
          // Handle SYS_clone child tid capture for proper pthread_join emulation.
@@ -130,12 +135,22 @@ VOID emulateSyscallFunc(THREADID threadid, CONTEXT *ctxt)
          // System calls not emulated (passed through to OS)
          case SYS_read:
          case SYS_write:
+            thread_data[threadid].last_syscall_number = syscall_number;
+            thread_data[threadid].last_syscall_emulated = false;
+            if (current_mode == Sift::ModeDetailed) {
+                thread_data[threadid].output->Syscall(syscall_number, (char*)args, sizeof(args));
+            }
+            break;
          case SYS_wait4:
             thread_data[threadid].last_syscall_number = syscall_number;
             thread_data[threadid].last_syscall_emulated = false;
             thread_data[threadid].output->Syscall(syscall_number, (char*)args, sizeof(args));
             break;
-
+//         case SYS_wait4:
+//            thread_data[threadid].last_syscall_number = syscall_number;
+//            thread_data[threadid].last_syscall_emulated = true;
+//            thread_data[threadid].output->Syscall(syscall_number, (char*)args, sizeof(args));
+//            break;
          // System calls emulated (not passed through to OS)
          case SYS_futex:
          case SYS_sched_yield:
@@ -150,6 +165,9 @@ VOID emulateSyscallFunc(THREADID threadid, CONTEXT *ctxt)
          // System calls sent to Sniper, but also passed through to OS
          case SYS_exit_group:
             thread_data[threadid].output->Syscall(syscall_number, (char*)args, sizeof(args));
+            std::cout << threadid << " exit "<<std::endl;
+            PIN_ExitApplication(0);
+            //exit(0);
             break;
       }
    }

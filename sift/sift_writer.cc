@@ -427,7 +427,7 @@ void Sift::Writer::Output(uint8_t fd, const char *data, uint32_t size)
    output->write(data, size);
 }
 
-int32_t Sift::Writer::NewThread()
+int32_t Sift::Writer::NewThread(bool req_response)
 {
    #if VERBOSE > 0
    std::cerr << "[DEBUG:" << m_id << "] Write NewThread" << std::endl;
@@ -440,13 +440,16 @@ int32_t Sift::Writer::NewThread()
 
    Record rec;
    rec.Other.zero = 0;
-   rec.Other.type = RecOtherNewThread;
+   rec.Other.type = req_response ? RecOtherNewThread : RecOtherNewThreadNoResponse;
    rec.Other.size = 0;
    output->write(reinterpret_cast<char*>(&rec), sizeof(rec.Other));
    output->flush();
    #if VERBOSE > 0
    std::cerr << "[DEBUG:" << m_id << "] Write NewThread Done" << std::endl;
    #endif
+
+   if (!req_response)
+      return 0;
 
    initResponse();
 
@@ -543,7 +546,12 @@ uint64_t Sift::Writer::Syscall(uint16_t syscall_number, const char *data, uint32
    {
       Record respRec;
       response->read(reinterpret_cast<char*>(&respRec), sizeof(rec.Other));
-      sift_assert(!response->fail());
+//      sift_assert(!response->fail());
+      if(response->fail()) {
+            std::cerr << __FILE__ << " " << __LINE__ << " response failed\n";
+            return retcode;
+      }
+      
       sift_assert(respRec.Other.zero == 0);
 
       switch(respRec.Other.type)
@@ -727,7 +735,7 @@ int32_t Sift::Writer::Fork()
    return result;
 }
 
-uint64_t Sift::Writer::Magic(uint64_t a, uint64_t b, uint64_t c)
+uint64_t Sift::Writer::Magic(uint64_t a, uint64_t b, uint64_t c) 
 {
    if (!output)
    {

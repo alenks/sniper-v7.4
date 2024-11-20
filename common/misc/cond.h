@@ -4,6 +4,8 @@
 #include "fixed_types.h"
 #include "lock.h"
 
+#include <asm/errno.h> // For EINTR on older kernels
+
 // Our condition variable interface is slightly different from
 // pthreads in that the mutex associated with the condition variable
 // is built into the condition variable itself.
@@ -15,7 +17,7 @@ class ConditionVariable
       ~ConditionVariable();
 
       // must acquire lock before entering wait. will own lock upon exit.
-      void wait(Lock& _lock, UInt64 timeout_ns = 0);
+      int wait(Lock& _lock, UInt64 timeout_ns = 0);
       void signal();
       void broadcast();
 

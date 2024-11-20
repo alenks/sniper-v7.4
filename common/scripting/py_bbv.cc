@@ -3,6 +3,7 @@
 #include "core_manager.h"
 #include "core.h"
 
+#include "log2.h"
 //////////
 // get(): retrieve a core's BBV
 //////////

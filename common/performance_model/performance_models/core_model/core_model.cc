@@ -1,5 +1,6 @@
 #include "core_model.h"
 #include "core_model_nehalem.h"
+#include "core_model_sunnycove.h"
 #if SNIPER_RISCV
 # include "core_model_boom_v1.h"
 #endif /* SNIPER_RISCV */
@@ -17,6 +18,8 @@ const CoreModel* CoreModel::getCoreModel(String type)
    {
       if (type == "nehalem")
          s_core_models[type] = new CoreModelNehalem();
+      else if (type == "sunnycove")
+         s_core_models[type] = new CoreModelSunnycove();
 #if SNIPER_RISCV
       else if (type == "riscv")
          s_core_models[type] = new CoreModelBoomV1();   

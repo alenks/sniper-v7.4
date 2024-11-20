@@ -18,6 +18,7 @@
 #include "pin.H"
 
 #include "globals.h"
+#include "recorder/bbv_count.h"
 #include "threads.h"
 #include "recorder_control.h"
 #include "recorder_base.h"
@@ -27,16 +28,119 @@
 #include "sift_writer.h"
 #include "sift_assert.h"
 #include "pinboost_debug.h"
+#include "hooks_init.h"
+#include "tool_warmup.h"
+//#include "tool_mtng.h"
+#include "flowcontrol_main.h"
+//#include "inst_count.h"
+#include "mtng.h"
+#include "intrabarrier_mtng.h"
+#include "intrabarrier_analysis.h"
+#include "hybridbarrier_mtng.h"
+#include "emu.h"
+#include "full_debug.h"
+#include "dvfs.h"
+#include "smarts.h"
+
+void initFlowC()
+{
+    flowcontrol::flowcontrol* ins_count_tool = getFlowControl();
+    ins_count_tool->activate();
+}
+
+void initMtr()
+{
+    mtr_enabled = true;
+    PinToolWarmup* warmup_tool = getWarmupTool();
+    warmup_tool->activate();
+}
+
+void initToolMtng( const AtomicType atomic_type )
+{
+//    ToolMtng* mtng_tool = getMtngTool();
+    //mtng_tool->activate( atomic_type );
+//    initFlowC();
+    // test functions
+    // testBbvUtil();
+}
+
+void testBbvUtil()
+{
+     // [debug] print dim-reduced(simpoint stype) bbvs 
+     /* 
+    const auto& bbvStandardprofile = Bbv_util::getBbvStandardProfile();
+    for (const auto & i : bbvStandardprofile) // for each barrier
+    {
+            for (const auto & j : i) // for each thread
+            {
+                const auto & bbv_dim_reduced = Bbv_util::randomProjection(j);
+                for (auto & k : bbv_dim_reduced) // print bbv
+                {
+                    std::cout << k << " ";
+                }
+                std::cout << "\n";
+            }
+            std::cout << "\n";
+    }
+    */
+
+    /*
+    const auto& bbvStandardprofile = Mtng::Bbv_util::getBbvStandardProfile();
+    std::cout << "[BBV TEST] number of barriers loaded: " << bbvStandardprofile.size() << std::endl;
+    int barrier_num = 0;
+    for (const auto & barrierBbv : bbvStandardprofile) // for each barrier
+    {
+            std::vector<std::pair<uint64_t,uint64_t>> globalBbv;
+            // find max threadBbv size for global bbvid offsetting
+            uint64_t offset = Mtng::Bbv_util::getMaxBbvId();
+            // std::cout << "BBV OFFSET == " << offset << std::endl;
+
+            int threadNum = 0;
+            for (const auto & threadBbv : barrierBbv) // for each thread
+            {
+                // globalBbv.insert( globalBbv.end(), j.begin(), j.end() );
+                for (const auto & bb : threadBbv)
+                {
+                    // offset for threads
+                    globalBbv.push_back({bb.first + (offset*threadNum) ,bb.second });
+                }
+                threadNum ++;
+            }
+
+            
+            std::cout << "[GLOBAL BBV] \n";
+            for (auto & i : globalBbv)
+            {
+                std::cout << i.first << ":" << i.second << " ";
+            }
+            std::cout << "[End of BBV]\n";
+           
+
+            int clusterId = Mtng::Bbv_util::findBbvCluster(globalBbv);
+            std::cout << "[BBV   ] BBV at barrier: "<<  barrier_num << " Belongs to cluster: "<< clusterId << std::endl;
+            barrier_num ++;
+    }
+*/
+
+
+}
+
 
 VOID Fini(INT32 code, VOID *v)
 {
+   thread_data[0].output->Magic(SIM_CMD_ROI_END, 0, 0);
    for (unsigned int i = 0 ; i < max_num_threads ; i++)
    {
+//      for (unsigned int i = 0 ; i < max_num_threads ; i++)
+
       if (thread_data[i].output)
       {
+
+         std::cerr << "[SIFT_RECORDER:  end of function\n " ;
          closeFile(i);
       }
    }
+
 }
 
 VOID Detach(VOID *v)
@@ -71,7 +175,7 @@ VOID forkAfterInChild(THREADID threadid, const CONTEXT *ctxt, VOID *v)
    app_id = child_app_id;
    num_threads = 1;
    // Open new SIFT pipe for thread 0
-   thread_data[0].bbv = new Bbv();
+   thread_data[0].bbv = new Bbv(0);
    openFile(0);
 }
 
@@ -119,13 +223,17 @@ int main(int argc, char **argv)
       exit(1);
    }
    PIN_InitSymbols();
-
+   time_stamp1 = getSystemTime();
+   time_stamp_begin = time_stamp1;
    if (KnobMaxThreads.Value() > 0)
    {
       max_num_threads = KnobMaxThreads.Value();
    }
+   init_global_bbv(); 
    size_t thread_data_size = max_num_threads * sizeof(*thread_data);
-   if (posix_memalign((void**)&thread_data, LINE_SIZE_BYTES, thread_data_size) != 0)
+   auto posix_memalign_ret = posix_memalign((void**)&thread_data, LINE_SIZE_BYTES, thread_data_size); 
+   std::cout << thread_data_size << " " <<  max_num_threads << " " <<  sizeof(*thread_data) << " " << sizeof(thread_data_t) << " " << posix_memalign_ret << std::endl;  
+   if ( posix_memalign_ret != 0)
    {
       std::cerr << "Error, posix_memalign() failed" << std::endl;
       exit(1);
@@ -148,10 +256,13 @@ int main(int argc, char **argv)
    {
       in_roi = true;
       setInstrumentationMode(Sift::ModeDetailed);
+      thread_data[0].output->Magic(SIM_CMD_ROI_START, 0, 0);
       openFile(0);
    }
    else if (KnobEmulateSyscalls.Value())
    {
+      in_roi = false;
+      setInstrumentationMode(Sift::ModeIcount);
       openFile(0);
    }
 
@@ -196,11 +307,33 @@ int main(int argc, char **argv)
       initSyscallModeling();
    }
 
+
+
    initThreads();
+
+   AtomicType atomic_type = AtomicType::BarrierPoint;
+   if( KnobAtomicType.Value() == 0 ) {
+        atomic_type = AtomicType::BarrierPoint;
+   } else if( KnobAtomicType.Value() == 1 ) {
+        atomic_type = AtomicType::AtomicRegion;
+   } else {
+        atomic_type = AtomicType::HybridMode;
+   }
+
    initRecorderControl();
    initRecorderBase();
    initEmulation();
+   std::cerr <<__FUNCTION__ <<" "  << (int)atomic_type << " " << (int)AtomicType::BarrierPoint << std::endl;
+/*
+   if (KnobMtngEnable.Value())
+   {
+        //initInsCount(); 
+        initToolMtng( atomic_type );
+        initMtr();
+   }
+*/
 
+   mtr_enabled = false;
    if (KnobRoutineTracing.Value())
       initRoutineTracer();
 
@@ -215,8 +348,82 @@ int main(int argc, char **argv)
    }
 
    pinboost_register("SIFT_RECORDER", KnobDebug.Value());
+    
+   Hooks::hooks_init(getHooksManager());
+   int64_t mtng_version = KnobMtngEnable.Value();
+   if (mtng_version!=0)
+   {
+//        mtng::activate();
+        if(mtng_version==1) { //1 means intrabarrier version
+     
+            std::cout << "intrabarrier version enable\n";
+            intrabarrier_mtng::activate( KnobDVFSEnable.Value()) ;
+            
+            initMtr();
+        } else if(mtng_version==2){ // 2 means hybrid version
+            std::cout << "hybridbarrier version enable\n";
+            hybridbarrier_mtng::activate();
+            initMtr();
+        } else if(mtng_version==100){ // 100 means smarts
+            std::cout << "smarts enable\n";
+            SMARTS::activate(KnobDVFSEnable.Value());
+            initMtr();
+        } else if(mtng_version==1004) { // 1004 means only enabling fast-forward mode
+            std::cout << "fast forward version enable\n";
+            //fastforward_mtng::activate();
+            EMU::activate();
+        } else if(mtng_version==1005) { // 1005 means only enabling fast-forward mode; and analytical data
+            std::cout << "fast forward version enable\n";
+            //fastforward_mtng::activate();
+            EMU::activate();
+            intrabarrier_analysis::activate(KnobDVFSEnable.Value());
+        } else if(mtng_version==1006) { // 1006 means only enabling fast-forward mode; analytical code and mtr
+            std::cout << "fast forward version enable\n";
+            //fastforward_mtng::activate();
+            EMU::activate();
+            intrabarrier_analysis::activate( KnobDVFSEnable.Value()) ;
+            initMtr();
+        } else if(mtng_version==1007) { // 1006 means only enabling fast-forward mode and mtr
+            std::cout << "pure mtr version enable\n";
+            //fastforward_mtng::activate();
+            EMU::activate();
+            initMtr();
+        }
 
-   PIN_StartProgram();
 
+
+        in_roi = true;
+        setInstrumentationMode(Sift::ModeDetailed);
+
+        thread_data[0].output->Magic(SIM_CMD_ROI_START, 0, 0);
+
+        //initInsCount(); 
+//        initToolMtng( atomic_type );
+//        if( KnobMTREnable.Value() ) {
+//        }
+   } else {
+//       std::cout << "Fast Forwatd Target : "<< fast_forward_target << "\n";
+        if (fast_forward_target == 0 )
+        {
+           in_roi = true;
+           setInstrumentationMode(Sift::ModeDetailed);
+           thread_data[0].output->Magic(SIM_CMD_ROI_START, 0, 0);
+        }
+        else 
+        {
+           in_roi = true;
+           setInstrumentationMode(Sift::ModeDetailed);
+           thread_data[0].output->Magic(SIM_CMD_ROI_START, 0, 0);
+
+
+            intrabarrier_mtng::activate( KnobDVFSEnable.Value()) ;
+           EMU::activate();
+        }
+        FullDebug::activate();
+   }
+   if( KnobDVFSEnable.Value() ) {
+       DVFSConfigure::activate( mtng_version!=0 );  
+   }
+    PIN_StartProgram();
    return 0;
 }

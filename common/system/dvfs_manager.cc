@@ -9,7 +9,7 @@
 #include "instruction.h"
 #include "log.h"
 #include "config.hpp"
-
+  
 DvfsManager::DvfsManager()
 {
    m_num_app_cores = Config::getSingleton()->getApplicationCores();
